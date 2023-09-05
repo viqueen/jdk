@@ -2749,8 +2749,7 @@ public class JavacParser implements Parser {
             String key = token.stringVal();
             accept(STRINGLITERAL);
             accept(COLON);
-            String value = token.stringVal();
-            accept(STRINGLITERAL);
+            JCExpression value = parseExpression();
             return F.at(pos).StringMapEntry(key, value);
         } else {
             return illegal(pos);
