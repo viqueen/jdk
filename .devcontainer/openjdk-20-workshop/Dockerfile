@@ -8,6 +8,6 @@ RUN apt-get update \
 
 RUN apt-get install -y git ant \
     && echo 'export ANT_HOME=/usr/share/ant' >> ~/.bashrc \
-    && git clone https://github.com/jenv/jenv.git ~/.jenv \
-    && echo 'export PATH="${HOME}/.jenv/bin:${PATH}"' >> ~/.bashrc \
-    && echo 'eval "$(jenv init -)"' >> ~/.bashrc
+    && git clone https://github.com/viqueen/jtreg.git --depth 1 --no-tags /tmp/sources/jtreg \
+    && cd /tmp/sources/jtreg \
+    && bash make/build.sh --jdk /opt/java/openjdk
