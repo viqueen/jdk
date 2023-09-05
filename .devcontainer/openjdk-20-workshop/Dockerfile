@@ -8,6 +8,6 @@ RUN apt-get update \
 
 RUN apt-get install -y git ant wget \
     && echo 'export ANT_HOME=/usr/share/ant' >> ~/.bashrc \
-    && git clone https://github.com/viqueen/jtreg.git --depth 1 --no-tags /tmp/sources/jtreg \
-    && cd /tmp/sources/jtreg \
+    && git clone https://github.com/viqueen/jtreg.git --depth 1 --no-tags /workspaces/jtreg \
+    && cd /workspaces/jtreg \
     && bash make/build.sh --jdk /opt/java/openjdk
