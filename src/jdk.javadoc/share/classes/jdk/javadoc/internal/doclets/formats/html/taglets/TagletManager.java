@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2001, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2001, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -64,6 +64,7 @@ import jdk.javadoc.internal.doclets.toolkit.Messages;
 import jdk.javadoc.internal.doclets.toolkit.Resources;
 import jdk.javadoc.internal.doclets.toolkit.util.CommentHelper;
 import jdk.javadoc.internal.doclets.toolkit.util.Utils;
+import jdk.javadoc.internal.doclint.DocLint;
 
 import static com.sun.source.doctree.DocTree.Kind.AUTHOR;
 import static com.sun.source.doctree.DocTree.Kind.EXCEPTION;
@@ -124,13 +125,6 @@ public class TagletManager {
     private final Set<String> standardTags;
 
     /**
-     * Keep track of standard tags in lowercase to compare for better
-     * error messages when a tag like {@code @docRoot} is mistakenly spelled
-     * lowercase {@code @docroot}.
-     */
-    private final Set<String> standardTagsLowercase;
-
-    /**
      * Keep track of overridden standard tags.
      */
     private final Set<String> overriddenStandardTags;
@@ -185,7 +179,6 @@ public class TagletManager {
         overriddenStandardTags = new HashSet<>();
         potentiallyConflictingTags = new HashSet<>();
         standardTags = new HashSet<>();
-        standardTagsLowercase = new HashSet<>();
         unseenCustomTags = new HashSet<>();
         allTaglets = new LinkedHashMap<>();
         this.config = config;
@@ -363,10 +356,12 @@ public class TagletManager {
             if (!allTaglets.containsKey(name)) {
                 if (!config.isDocLintSyntaxGroupEnabled()) {
                     var ch = utils.getCommentHelper(element);
-                    if (standardTagsLowercase.contains(Utils.toLowerCase(name))) {
-                        messages.warning(ch.getDocTreePath(tag), "doclet.UnknownTagLowercase", ch.getTagName(tag));
+                    List<String> suggestions = DocLint.suggestSimilar(allTaglets.keySet(), name);
+                    if (!suggestions.isEmpty()) {
+                        messages.warning(ch.getDocTreePath(tag), "doclet.UnknownTagWithHint",
+                                String.join(", ", suggestions)); // TODO: revisit after 8041488
                     } else {
-                        messages.warning(ch.getDocTreePath(tag), "doclet.UnknownTag", ch.getTagName(tag));
+                        messages.warning(ch.getDocTreePath(tag), "doclet.UnknownTag");
                     }
                 }
                 continue; // unknown tag
@@ -595,13 +590,13 @@ public class TagletManager {
         addStandardTaglet(new ReturnTaglet(config));
         addStandardTaglet(new ThrowsTaglet(config), EXCEPTION);
         addStandardTaglet(
-                new SimpleTaglet(config, SINCE, resources.getText("doclet.Since"),
+                SimpleTaglet.createWithDefaultForNested(config, SINCE, resources.getText("doclet.Since"),
                     EnumSet.allOf(Location.class), !nosince));
         addStandardTaglet(
-                new SimpleTaglet(config, VERSION, resources.getText("doclet.Version"),
+                SimpleTaglet.createWithDefaultForNested(config, VERSION, resources.getText("doclet.Version"),
                     EnumSet.of(Location.OVERVIEW, Location.MODULE, Location.PACKAGE, Location.TYPE), showversion));
         addStandardTaglet(
-                new SimpleTaglet(config, AUTHOR, resources.getText("doclet.Author"),
+                SimpleTaglet.createWithDefaultForNested(config, AUTHOR, resources.getText("doclet.Author"),
                     EnumSet.of(Location.OVERVIEW, Location.MODULE, Location.PACKAGE, Location.TYPE), showauthor));
         addStandardTaglet(
                 new SimpleTaglet(config, SERIAL_DATA, resources.getText("doclet.SerialData"),
@@ -660,7 +655,6 @@ public class TagletManager {
         String name = taglet.getName();
         allTaglets.put(name, taglet);
         standardTags.add(name);
-        standardTagsLowercase.add(Utils.toLowerCase(name));
     }
 
     private void addStandardTaglet(Taglet taglet, DocTree.Kind alias) {
@@ -668,7 +662,6 @@ public class TagletManager {
         String name = alias.tagName;
         allTaglets.put(name, taglet);
         standardTags.add(name);
-        standardTagsLowercase.add(Utils.toLowerCase(name));
     }
 
     public boolean isKnownCustomTag(String tagName) {

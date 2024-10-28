@@ -35,7 +35,7 @@
  *                   -XX:+WhiteBoxAPI
  *                   compiler.vectorization.runner.BasicShortOpTest
  *
- * @requires vm.compiler2.enabled & vm.flagless
+ * @requires vm.compiler2.enabled
  */
 
 package compiler.vectorization.runner;
@@ -189,7 +189,7 @@ public class BasicShortOpTest extends VectorizationTestRunner {
 
     // ---------------- Shift ----------------
     @Test
-    @IR(applyIfCPUFeatureOr = {"asimd", "true", "sse2", "true"},
+    @IR(applyIfCPUFeatureOr = {"asimd", "true", "sse2", "true", "rvv", "true"},
         counts = {IRNode.LSHIFT_VS, ">0"})
     public short[] vectorShiftLeft() {
         short[] res = new short[SIZE];
@@ -200,7 +200,7 @@ public class BasicShortOpTest extends VectorizationTestRunner {
     }
 
     @Test
-    @IR(applyIfCPUFeatureOr = {"asimd", "true", "sse2", "true"},
+    @IR(applyIfCPUFeatureOr = {"asimd", "true", "sse2", "true", "rvv", "true"},
         counts = {IRNode.RSHIFT_VS, ">0"})
     public short[] vectorSignedShiftRight() {
         short[] res = new short[SIZE];
@@ -236,7 +236,7 @@ public class BasicShortOpTest extends VectorizationTestRunner {
     }
 
     @Test
-    @IR(applyIfCPUFeatureOr = {"asimd", "true", "sse2", "true"},
+    @IR(applyIfCPUFeatureOr = {"asimd", "true", "sse2", "true", "rvv", "true"},
         counts = {IRNode.RSHIFT_VS, ">0"})
     public short[] vectorUnsignedShiftRight() {
         short[] res = new short[SIZE];
@@ -249,6 +249,9 @@ public class BasicShortOpTest extends VectorizationTestRunner {
     // ------------- ReverseBytes -------------
     @Test
     @IR(applyIfCPUFeatureOr = {"asimd", "true", "avx2", "true"},
+        counts = {IRNode.REVERSE_BYTES_VS, ">0"})
+    @IR(applyIfPlatform = {"riscv64", "true"},
+        applyIfCPUFeature = {"zvbb", "true"},
         counts = {IRNode.REVERSE_BYTES_VS, ">0"})
     public short[] reverseBytesWithShort() {
         short[] res = new short[SIZE];

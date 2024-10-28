@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1995, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1995, 2024, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -172,6 +172,8 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
      */
     private static final int bufSize4ES;
 
+    private static final int maxHeaderSize;
+
     /*
      * Restrict setting of request headers through the public api
      * consistent with JavaScript XMLHttpRequest2 with a few
@@ -288,6 +290,19 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
         } else {
             restrictedHeaderSet = null;
         }
+
+        int defMaxHeaderSize = 384 * 1024;
+        String maxHeaderSizeStr = getNetProperty("jdk.http.maxHeaderSize");
+        int maxHeaderSizeVal = defMaxHeaderSize;
+        if (maxHeaderSizeStr != null) {
+            try {
+                maxHeaderSizeVal = Integer.parseInt(maxHeaderSizeStr);
+            } catch (NumberFormatException n) {
+                maxHeaderSizeVal = defMaxHeaderSize;
+            }
+        }
+        if (maxHeaderSizeVal < 0) maxHeaderSizeVal = 0;
+        maxHeaderSize = maxHeaderSizeVal;
     }
 
     static final String httpVersion = "HTTP/1.1";
@@ -334,13 +349,6 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
     private boolean setUserCookies = true;
     private String userCookies = null;
     private String userCookies2 = null;
-
-    /* We only have a single static authenticator for now.
-     * REMIND:  backwards compatibility with JDK 1.1.  Should be
-     * eliminated for JDK 2.0.
-     */
-    @Deprecated
-    private static HttpAuthenticator defaultAuth;
 
     /* all the headers we send
      * NOTE: do *NOT* dump out the content of 'requests' in the
@@ -403,6 +411,10 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
     /* Remembered Exception, we will throw it again if somebody
        calls getInputStream after disconnect */
     private Exception rememberedException = null;
+
+    /* Remembered Exception, we will throw it again if somebody
+       calls getOutputStream after disconnect  or error */
+    private Exception rememberedExceptionOut = null;
 
     /* If we decide we want to reuse a client, we put it here */
     private HttpClient reuseClient = null;
@@ -757,7 +769,7 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
                 }
                 ps = (PrintStream) http.getOutputStream();
                 connected=true;
-                responses = new MessageHeader();
+                responses = new MessageHeader(maxHeaderSize);
                 setRequests=false;
                 writeRequests();
             }
@@ -915,7 +927,7 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
             throws IOException {
         super(checkURL(u));
         requests = new MessageHeader();
-        responses = new MessageHeader();
+        responses = new MessageHeader(maxHeaderSize);
         userHeaders = new MessageHeader();
         this.handler = handler;
         instProxy = p;
@@ -939,14 +951,6 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
                 return ResponseCache.getDefault();
             }
         });
-    }
-
-    /**
-     * @deprecated.  Use java.net.Authenticator.setDefault() instead.
-     */
-    @Deprecated
-    public static void setDefaultAuthenticator(HttpAuthenticator a) {
-        defaultAuth = a;
     }
 
     /**
@@ -1431,6 +1435,14 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
                                + " if doOutput=false - call setDoOutput(true)");
             }
 
+            if (rememberedExceptionOut != null) {
+                if (rememberedExceptionOut instanceof RuntimeException) {
+                    throw new RuntimeException(rememberedExceptionOut);
+                } else {
+                    throw getChainedException((IOException) rememberedExceptionOut);
+                }
+            }
+
             if (method.equals("GET")) {
                 method = "POST"; // Backward compatibility
             }
@@ -1490,9 +1502,11 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
             int i = responseCode;
             disconnectInternal();
             responseCode = i;
+            rememberedExceptionOut = e;
             throw e;
         } catch (RuntimeException | IOException e) {
             disconnectInternal();
+            rememberedExceptionOut = e;
             throw e;
         }
     }
@@ -2510,22 +2524,6 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
                     throw new AssertionError("should not reach here");
                 }
             }
-            // For backwards compatibility, we also try defaultAuth
-            // REMIND:  Get rid of this for JDK2.0.
-
-            if (ret == null && defaultAuth != null
-                && defaultAuth.schemeSupported(scheme)) {
-                try {
-                    @SuppressWarnings("deprecation")
-                    URL u = new URL("http", host, port, "/");
-                    String a = defaultAuth.authString(u, scheme, realm);
-                    if (a != null) {
-                        ret = new BasicAuthentication (true, host, port, realm, a);
-                        // not in cache by default - cache on success
-                    }
-                } catch (java.net.MalformedURLException ignored) {
-                }
-            }
             if (ret != null) {
                 if (!ret.setHeaders(this, p, raw)) {
                     ret.disposeContext();
@@ -2683,19 +2681,6 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
                     throw new AssertionError("should not reach here");
                 }
             }
-
-            // For backwards compatibility, we also try defaultAuth
-            // REMIND:  Get rid of this for JDK2.0.
-
-            if (ret == null && defaultAuth != null
-                && defaultAuth.schemeSupported(scheme)) {
-                String a = defaultAuth.authString(url, scheme, realm);
-                if (a != null) {
-                    ret = new BasicAuthentication (false, url, realm, a);
-                    // not in cache by default - cache on success
-                }
-            }
-
             if (ret != null ) {
                 if (!ret.setHeaders(this, p, raw)) {
                     ret.disposeContext();
@@ -2840,7 +2825,7 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
         }
 
         // clear out old response headers!!!!
-        responses = new MessageHeader();
+        responses = new MessageHeader(maxHeaderSize);
         if (stat == HTTP_USE_PROXY) {
             /* This means we must re-request the resource through the
              * proxy denoted in the "Location:" field of the response.
@@ -3030,7 +3015,7 @@ public class HttpURLConnection extends java.net.HttpURLConnection {
             } catch (IOException e) { }
         }
         responseCode = -1;
-        responses = new MessageHeader();
+        responses = new MessageHeader(maxHeaderSize);
         connected = false;
     }
 
